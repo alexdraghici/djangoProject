@@ -3,6 +3,7 @@ from channels.db import database_sync_to_async
 from django.db import models
 from polymorphic.models import PolymorphicModel
 
+
 # the following lines added:
 
 
@@ -99,3 +100,52 @@ class InterClass(PolymorphicBaseModel):
 
 class ChildClass(InterClass):
     other_text = models.CharField(max_length=200, null=True)
+
+
+class ChildTwoClass(ChildClass):
+    f2 = models.ForeignKey('BaseClass', on_delete=models.CASCADE)
+
+
+class ModelDiffMixin(object):
+    """
+    A model mixin that tracks model fields' values and provide some useful api
+    to know what fields have been changed.
+    """
+
+    def changed_fields(self):
+        changed_fields = []
+        old = None
+        if self.pk:
+            # If self.pk is not None then it's an update.
+            cls = self.__class__
+            old = cls.objects.get(pk=self.pk)
+            # This will get the current model state since super().save() isn't called yet.
+            new = self  # This gets the newly instantiated Mode object with the new values.
+            for field in cls._meta.get_fields():
+                field_name = field.name
+                if getattr(old, field_name, None) != getattr(new, field_name, None):
+                    changed_fields.append(field_name)
+        return changed_fields, old
+
+
+class Event(PolymorphicBaseModel):
+    @classmethod
+    def create(cls, **kwargs):
+        return cls(**kwargs)
+
+
+class TaskEvent(Event):
+    task = models.ForeignKey('Task', on_delete=models.SET_NULL, null=True, related_name='+')
+
+    @classmethod
+    def create(cls, task, **kwargs):
+        return super().create(task=task,
+                              **kwargs)
+
+
+class AddTaskMemberEvent(TaskEvent):
+    pass
+
+
+class Task(PolymorphicBaseModel, ModelDiffMixin):
+    name = models.TextField()
